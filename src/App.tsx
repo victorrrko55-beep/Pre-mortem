@@ -3,6 +3,7 @@ import { useAppStore } from './store/useAppStore'
 import { TabBar, type Tab } from './components/TabBar'
 import { VehicleForm } from './components/VehicleForm'
 import { VehicleManager } from './components/VehicleManager'
+import { SettingsSection } from './components/SettingsSection'
 import { RecordForm } from './components/RecordForm'
 import { RecordList } from './components/RecordList'
 import { TrendsView } from './components/TrendsView'
@@ -84,7 +85,12 @@ function App() {
           />
         )}
         {tab === 'trends' && <TrendsView />}
-        {tab === 'vehicles' && <VehicleManager />}
+        {tab === 'vehicles' && (
+          <div className="space-y-6">
+            <VehicleManager />
+            <SettingsSection />
+          </div>
+        )}
       </main>
 
       <TabBar tab={tab} onChange={changeTab} />

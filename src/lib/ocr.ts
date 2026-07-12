@@ -5,7 +5,7 @@ import { createWorker } from 'tesseract.js'
  * 최초 실행 시 언어 데이터(~수 MB)를 내려받으므로 네트워크 연결이 필요하다.
  */
 export async function recognizeReceipt(
-  image: File,
+  image: File | Blob,
   onProgress: (percent: number, status: string) => void,
 ): Promise<string> {
   const worker = await createWorker(['kor', 'eng'], 1, {

@@ -1,9 +1,51 @@
 import type { FuelRecord } from '../types'
 
-/** 연비 (km/L) — 이동 거리와 주유량이 모두 있어야 계산 */
-export function fuelEconomy(record: FuelRecord): number | null {
-  if (record.distanceKm == null || record.distanceKm <= 0 || record.liters <= 0) return null
-  return record.distanceKm / record.liters
+const byDateAsc = (a: FuelRecord, b: FuelRecord) =>
+  a.date === b.date ? a.createdAt - b.createdAt : a.date < b.date ? -1 : 1
+
+/**
+ * 가득~가득(full-to-full) 방식 연비 계산.
+ *
+ * 가득 주유 기록마다, 직전 가득 주유 이후의 모든 기록(부분 주유 포함)의
+ * 주유량 합과 이동 거리 합으로 구간 연비를 구한다. 구간 내에 이동 거리가
+ * 빠진 기록이 있으면 그 구간은 계산하지 않는다. 부분 주유 기록 자체에는
+ * 연비가 붙지 않는다. 기준이 될 직전 가득 주유가 없는 첫 가득 주유는
+ * 해당 기록의 거리/주유량 단순 비율로 계산한다.
+ *
+ * @returns 기록 id → 연비(km/L)
+ */
+export function computeEconomies(records: FuelRecord[]): Map<string, number> {
+  const sorted = [...records].sort(byDateAsc)
+  const result = new Map<string, number>()
+
+  let hasBaseline = false
+  let spanLiters = 0
+  let spanDistance = 0
+  let spanComplete = true
+
+  for (const r of sorted) {
+    if (!hasBaseline) {
+      if (r.fullTank) {
+        if (r.distanceKm != null && r.distanceKm > 0 && r.liters > 0) {
+          result.set(r.id, r.distanceKm / r.liters)
+        }
+        hasBaseline = true
+      }
+      continue
+    }
+    spanLiters += r.liters
+    if (r.distanceKm != null && r.distanceKm > 0) spanDistance += r.distanceKm
+    else spanComplete = false
+    if (r.fullTank) {
+      if (spanComplete && spanLiters > 0 && spanDistance > 0) {
+        result.set(r.id, spanDistance / spanLiters)
+      }
+      spanLiters = 0
+      spanDistance = 0
+      spanComplete = true
+    }
+  }
+  return result
 }
 
 export interface MonthlyStat {

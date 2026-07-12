@@ -1,5 +1,5 @@
 import { useAppStore } from '../store/useAppStore'
-import { fmt, fmt1, fuelEconomy, monthLabel } from '../lib/stats'
+import { computeEconomies, fmt, fmt1, monthLabel } from '../lib/stats'
 import type { FuelRecord } from '../types'
 import { FUEL_GRADE_LABELS } from '../types'
 
@@ -24,6 +24,9 @@ export function RecordList({ onEdit }: Props) {
   const vehicleRecords = records
     .filter((r) => r.vehicleId === selectedVehicleId)
     .sort((a, b) => (a.date === b.date ? b.createdAt - a.createdAt : a.date < b.date ? 1 : -1))
+
+  // 가득~가득(full-to-full) 구간 연비
+  const economies = computeEconomies(vehicleRecords)
 
   if (vehicleRecords.length === 0) {
     return (
@@ -88,7 +91,7 @@ export function RecordList({ onEdit }: Props) {
           </h3>
           <div className="space-y-2">
             {items.map((r) => {
-              const economy = fuelEconomy(r)
+              const economy = economies.get(r.id)
               return (
                 <article key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex items-start justify-between gap-2">
@@ -101,10 +104,16 @@ export function RecordList({ onEdit }: Props) {
                         {r.paymentCard && ` · ${r.paymentCard}`}
                       </p>
                     </div>
-                    {economy != null && (
+                    {economy != null ? (
                       <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                         {fmt1(economy)} km/L
                       </span>
+                    ) : (
+                      !r.fullTank && (
+                        <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                          부분 주유
+                        </span>
+                      )
                     )}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700">

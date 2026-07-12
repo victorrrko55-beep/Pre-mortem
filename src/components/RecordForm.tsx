@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { recognizeReceipt } from '../lib/ocr'
+import { recognizeWithClova } from '../lib/clova'
+import { preprocessReceiptImage } from '../lib/preprocess'
 import { parseReceiptText } from '../lib/receipt'
 import { fmt, fmt1 } from '../lib/stats'
 import type { FuelGrade, FuelRecord } from '../types'
@@ -40,6 +42,7 @@ export function RecordForm({ editingRecord, onDone }: Props) {
   const selectedVehicleId = useAppStore((s) => s.selectedVehicleId)
   const addRecord = useAppStore((s) => s.addRecord)
   const updateRecord = useAppStore((s) => s.updateRecord)
+  const ocrSettings = useAppStore((s) => s.ocrSettings)
 
   const vehicle = vehicles.find((v) => v.id === (editingRecord?.vehicleId ?? selectedVehicleId))
 
@@ -61,6 +64,7 @@ export function RecordForm({ editingRecord, onDone }: Props) {
   const [odometer, setOdometer] = useState(
     editingRecord?.odometer != null ? String(editingRecord.odometer) : '',
   )
+  const [fullTank, setFullTank] = useState(editingRecord?.fullTank ?? true)
   const [memo, setMemo] = useState(editingRecord?.memo ?? '')
 
   const [scan, setScan] = useState<ScanState>({ kind: 'idle' })
@@ -96,9 +100,32 @@ export function RecordForm({ editingRecord, onDone }: Props) {
     })
     setScan({ kind: 'working', percent: 0, status: '인식 엔진 준비 중' })
     try {
-      const text = await recognizeReceipt(file, (percent, status) =>
-        setScan({ kind: 'working', percent, status }),
-      )
+      let text: string | null = null
+      // CLOVA OCR이 설정되어 있으면 우선 사용, 실패하면 기기 내 OCR로 폴백
+      if (ocrSettings.clovaInvokeUrl && ocrSettings.clovaSecretKey) {
+        setScan({ kind: 'working', percent: 50, status: 'CLOVA OCR 인식 중' })
+        try {
+          text = await recognizeWithClova(
+            file,
+            ocrSettings.clovaInvokeUrl,
+            ocrSettings.clovaSecretKey,
+          )
+        } catch {
+          text = null
+        }
+      }
+      if (text === null) {
+        // 전처리(리사이즈·그레이스케일·대비 보정)로 기기 내 OCR 인식률을 높인다
+        let input: File | Blob = file
+        try {
+          input = await preprocessReceiptImage(file)
+        } catch {
+          input = file
+        }
+        text = await recognizeReceipt(input, (percent, status) =>
+          setScan({ kind: 'working', percent, status }),
+        )
+      }
       const parsed = parseReceiptText(text)
       if (parsed.date) setDate(parsed.date)
       if (parsed.stationName) setStationName(parsed.stationName)
@@ -147,6 +174,7 @@ export function RecordForm({ editingRecord, onDone }: Props) {
       paymentCard: paymentCard.trim(),
       distanceKm: distanceKm !== '' && distanceNum > 0 ? distanceNum : null,
       odometer: odometer !== '' && Number(odometer) > 0 ? Number(odometer) : null,
+      fullTank,
       memo: memo.trim(),
     }
     if (editingRecord) updateRecord(editingRecord.id, data)
@@ -376,10 +404,26 @@ export function RecordForm({ editingRecord, onDone }: Props) {
             자동 계산됩니다.
           </p>
         )}
+        <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={fullTank}
+            onChange={(e) => setFullTank(e.target.checked)}
+            className="size-4 accent-blue-600"
+          />
+          <span className="text-sm text-slate-700">
+            가득 주유
+            <span className="ml-1.5 text-xs text-slate-400">연비는 가득~가득 구간으로 계산</span>
+          </span>
+        </label>
         <div className="rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
           <span className="text-slate-500">예상 연비 </span>
           <span className="font-semibold text-slate-900">
-            {economy != null ? `${fmt1(economy)} km/L` : '이동 거리와 주유량 입력 시 계산'}
+            {!fullTank
+              ? '부분 주유 — 다음 가득 주유 때 구간 연비로 계산'
+              : economy != null
+                ? `${fmt1(economy)} km/L`
+                : '이동 거리와 주유량 입력 시 계산'}
           </span>
         </div>
         <label className="block">

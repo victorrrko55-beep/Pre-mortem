@@ -35,6 +35,8 @@ export interface FuelRecord {
   distanceKm: number | null
   /** 총 누적 주행거리 (km) — 사용자 입력 */
   odometer: number | null
+  /** 가득 주유 여부 — 연비는 가득~가득(full-to-full) 구간으로 계산 */
+  fullTank: boolean
   memo: string
   createdAt: number
 }
